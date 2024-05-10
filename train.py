@@ -177,10 +177,10 @@ class TopoTree:
 
     @staticmethod
     def _fit_tree(train_X, train_y, train_w: dict, val_X, val_y, val_w):
-        max_depth = int(np.ceil(np.log2(len(train_X)) * 1.5))
+        max_depth = max(int(np.ceil(np.log2(len(train_w)) * 1.5)), 1)
         best_acc, best_tree = 0, None
         for criterion in ["gini", "entropy", "log_loss"]:
-            for max_depth in list(range(1, max_depth)):
+            for max_depth in list(range(1, max_depth + 1)):
                 classifier = tree.DecisionTreeClassifier(
                     criterion=criterion,
                     max_depth=max_depth,
