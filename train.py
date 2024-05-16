@@ -4,10 +4,13 @@ from typing import Literal, Optional
 
 import numpy as np
 import pandas as pd
+import pydot
 from datasail.sail import datasail
 from glycowork.motif.tokenization import structure_to_basic
-from sklearn import tree
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import accuracy_score
+
+from visualize import DOTTreeExporter
 
 
 class TopoData:
@@ -179,18 +182,18 @@ class TopoTree:
     def _fit_tree(train_X, train_y, train_w: dict, val_X, val_y, val_w):
         max_depth = max(int(np.ceil(np.log2(len(train_w)) * 1.5)), 1)
         best_acc, best_tree = 0, None
-        for criterion in ["gini", "entropy", "log_loss"]:
-            for max_depth in list(range(1, max_depth + 1)):
-                classifier = tree.DecisionTreeClassifier(
-                    criterion=criterion,
-                    max_depth=max_depth,
-                    class_weight=train_w,
-                ).fit(train_X, train_y)
-                val_p = classifier.predict(val_X)
-                acc = accuracy_score(val_y, val_p, sample_weight=val_w)
-                if acc > best_acc:
-                    best_acc = acc
-                    best_tree = copy.deepcopy(classifier)
+        # for criterion in ["gini", "entropy", "log_loss"]:
+        for max_depth in list(range(1, max_depth + 1)):
+            classifier = DecisionTreeClassifier(
+                criterion="entropy",
+                max_depth=max_depth,
+                class_weight=train_w,
+            ).fit(train_X, train_y)
+            val_p = classifier.predict(val_X)
+            acc = accuracy_score(val_y, val_p, sample_weight=val_w)
+            if acc > best_acc:
+                best_acc = acc
+                best_tree = copy.deepcopy(classifier)
         return best_tree
 
 
@@ -213,4 +216,37 @@ def train_topo_tree(in_filename, out_filename: Optional[str] = None, weighting: 
     if out_filename is not None:
         with open("data/topo_tree.pkl", "wb") as f:
             pickle.dump(tree, f)
-    return tree
+    return data, tree
+
+
+def spec2svg(in_filename, output_path_prefix: str, weighting: bool = True, GPID_SIM: float = 0.8):
+    data, tree = train_topo_tree(in_filename, weighting=weighting, GPID_SIM=GPID_SIM)
+
+    topo_tree_name = f"{output_path_prefix}_topo_tree".encode('ascii', 'replace').decode('ascii')
+
+    # Export the topology tree
+    isomer_map = data.df.groupby('topo_y')['y'].apply(set).to_dict()
+    DOTTreeExporter(out_file=topo_tree_name + ".dot").export(
+        tree.topo_tree,
+        class_weights=data.topo_weights,
+        total=dict(np.asarray(np.unique(data("train", "y", "topo"), return_counts=True)).T),
+        topo=None,
+        isomer_map=isomer_map,
+    )
+    pydot.graph_from_dot_file(topo_tree_name + ".dot")[0].write_svg(topo_tree_name + ".svg")
+
+    for i, topo in enumerate(tree.topo_classes_):
+        if len(tree.isomer_trees[topo].classes_) == 1:
+            continue
+        iso_tree_name = f"{output_path_prefix}_isomer_tree_{i}".encode('ascii', 'replace').decode('ascii')
+        DOTTreeExporter(out_file=iso_tree_name + ".dot").export(
+            tree.isomer_trees[topo],
+            class_weights=data.weights[topo],
+            total=dict(np.asarray(np.unique(data("train", "y", topo), return_counts=True)).T),
+            topo=topo,
+        )
+        pydot.graph_from_dot_file(iso_tree_name + ".dot")[0].write_svg(iso_tree_name + ".svg")
+
+
+if __name__ == '__main__':
+    spec2svg("spectra_for_roman/733_isomer_spectra.pkl", "733", weighting=True, GPID_SIM=0.8)
