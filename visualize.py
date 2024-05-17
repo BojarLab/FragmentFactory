@@ -74,8 +74,11 @@ class DOTTreeExporter(_BaseTreeExporter):
                    .encode('ascii', 'replace')
                    .decode('ascii')
                    .replace("?", "X"))
-            print(img)
+
+            # when changing the output file format, also change the file extension in the line above
             GlycoDraw(isomer, suppress=True).save_svg(img)
+            GlycoDraw(isomer, filepath=img[:-4] + ".pdf", suppress=True)
+
             kwargs["imgs"][isomer] = img
         return kwargs["imgs"][isomer]
 
