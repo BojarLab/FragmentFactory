@@ -1,10 +1,11 @@
 import copy
+import os
 import pickle
+import sys
 from typing import Literal, Optional
 
 import numpy as np
 import pandas as pd
-import pydot
 from datasail.sail import datasail
 from glycowork.motif.tokenization import structure_to_basic
 from sklearn.tree import DecisionTreeClassifier
@@ -219,6 +220,11 @@ def train_topo_tree(in_filename, out_filename: Optional[str] = None, weighting: 
     return data, tree
 
 
+def dot2svg(output_path_prefix):
+    # pydot.graph_from_dot_file(topo_tree_name + ".dot")[0].write_svg(topo_tree_name + ".svg")
+    os.system(f"dot -Tsvg{':cairo' if sys.platform.lower().startswith('linux') else ''} {output_path_prefix}.dot -o {output_path_prefix}.svg")
+
+
 def spec2svg(in_filename, output_path_prefix: str, weighting: bool = True, GPID_SIM: float = 0.8):
     data, tree = train_topo_tree(in_filename, weighting=weighting, GPID_SIM=GPID_SIM)
 
@@ -233,7 +239,7 @@ def spec2svg(in_filename, output_path_prefix: str, weighting: bool = True, GPID_
         topo=None,
         isomer_map=isomer_map,
     )
-    pydot.graph_from_dot_file(topo_tree_name + ".dot")[0].write_svg(topo_tree_name + ".svg")
+    dot2svg(topo_tree_name)
 
     for i, topo in enumerate(tree.topo_classes_):
         if len(tree.isomer_trees[topo].classes_) == 1:
@@ -245,7 +251,7 @@ def spec2svg(in_filename, output_path_prefix: str, weighting: bool = True, GPID_
             total=dict(np.asarray(np.unique(data("train", "y", topo), return_counts=True)).T),
             topo=topo,
         )
-        pydot.graph_from_dot_file(iso_tree_name + ".dot")[0].write_svg(iso_tree_name + ".svg")
+        dot2svg(iso_tree_name)
 
 
 if __name__ == '__main__':

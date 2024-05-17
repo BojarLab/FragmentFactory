@@ -88,7 +88,6 @@ class DOTTreeExporter(_BaseTreeExporter):
             "weights": class_weights,
             "counts": total,
             "topo": topo,
-            # "imgs": {"q": str((Path("imgs") / "q2.png").absolute()).replace("\\", "/")},
             "imgs": {"q": r"{}".format(Path("q.svg").absolute())},
             "isomer_map": isomer_map,
         }
@@ -168,9 +167,6 @@ class DOTTreeExporter(_BaseTreeExporter):
         crumb = crumb[mean]
         img = self.create_snfg(domon_costello_to_fragIUPAC(kwargs["topo"], crumb["Domon-Costello nomenclatures"][0]),
                                **kwargs)
-        # GlycoDraw(
-        #     domon_costello_to_fragIUPAC(kwargs["topo"], crumb["Domon-Costello nomenclatures"][0])
-        # ).rasterize().save_png(img := (Path("imgs") / f"{str(mean).replace('.', '_')}.png"))
         return img, crumb["Theoretical fragment masses"][0]
 
     def recurse(self, tree, node_id, criterion, parent=None, depth=0, **kwargs):
@@ -198,9 +194,6 @@ class DOTTreeExporter(_BaseTreeExporter):
                     f"<tr><td> {y} </td></tr> "
                     f"</table>"
                     f">")
-
-        # "<tr><td><img src='{self.create_snfg(isomer, **kwargs)}' /></td></tr>"
-        # "<tr><td><img src='{self.create_snfg(isomer, **kwargs)}' height='110'/></td></tr>"
 
         node_str = self.node_to_str(tree, node_id, criterion)
         if left_child == _tree.TREE_LEAF:  # Leaf node
