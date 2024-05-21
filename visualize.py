@@ -95,14 +95,13 @@ class DOTTreeExporter(_BaseTreeExporter):
         for _cls in kwargs["classes"]:
             test_values += [sum(test_y[test_path[node_id] == 1] == _cls)]
 
-        conf_norm = lambda vals: (vals[maxdex] / kwargs['weights'][kwargs['classes'][maxdex]]) / sum([v / kwargs['weights'][c] for v, c in zip(values, kwargs['classes'])])
-        train_confidence = conf_norm(values)
+        train_confidence = (values[maxdex] / kwargs['weights'][kwargs['classes'][maxdex]]) / sum([v / kwargs['weights'][c] for v, c in zip(values, kwargs['classes'])])
         train_coverage = (values[maxdex] / kwargs['weights'][isomer]) / kwargs['counts'][isomer]
 
-        val_confidence = conf_norm(val_values)
+        val_confidence = (val_values[maxdex] / kwargs['weights'][kwargs['classes'][maxdex]]) / sum([v / kwargs['weights'][c] for v, c in zip(val_values, kwargs['classes'])])
         val_coverage = (val_values[maxdex] / kwargs['weights'][isomer]) / sum(val_y == isomer)
 
-        test_confidence = conf_norm(test_values)
+        test_confidence = (test_values[maxdex] / kwargs['weights'][kwargs['classes'][maxdex]]) / sum([v / kwargs['weights'][c] for v, c in zip(test_values, kwargs['classes'])])
         test_coverage = (test_values[maxdex] / kwargs['weights'][isomer]) / sum(test_y == isomer)
 
         return (
