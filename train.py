@@ -14,72 +14,73 @@ from sklearn.metrics import accuracy_score
 from visualize import DOTTreeExporter
 
 
-class TopoData:
-    def __init__(self, spec_df, weighting: bool = True, GPID_SIM: float = 0.8):
-        # Extract the most important data from the spectra dataframe to a new dataframe
-        self.df = pd.DataFrame({
-            "ID": [f"G{i:05d}" for i in range(len(spec_df))],
-            "X": list(np.stack(spec_df["binned_intensities_norm"].values)),
-            "y": spec_df["glycan"],
-            "filename": spec_df["filename"],
-            "GP_ID": spec_df["GlycoPost_ID"],
-        })
+def split(spec_df, GPID_SIM=0.8):
+    df = pd.DataFrame({
+        "ID": [f"G{i:05d}" for i in range(len(spec_df))],
+        "X": list(np.stack(spec_df["binned_intensities_norm"].values)),
+        "y": spec_df["glycan"],
+        "filename": spec_df["filename"],
+        "GP_ID": spec_df["GlycoPost_ID"],
+    })
 
-        # remove everything that cannot be usefully split
-        _vc = dict(self.df["y"].value_counts())
-        self.df = self.df[[_vc[x] >= 3 and "?" not in x for x in self.df["y"]]]
+    # remove everything that cannot be usefully split
+    _vc = dict(df["y"].value_counts())
+    df = df[[_vc[x] >= 3 and "?" not in x for x in df["y"]]]
 
-        # Calculate the topology
-        _topo_map = {g: structure_to_basic(g) for g in self.df["y"].unique()}
-        self.df["topo_y"] = self.df["y"].apply(lambda x: _topo_map[x])
+    # Calculate the topology
+    _topo_map = {g: structure_to_basic(g) for g in df["y"].unique()}
+    df["topo_y"] = df["y"].apply(lambda x: _topo_map[x])
 
-        # Calculate similarity matrix
-        _sim = np.zeros((len(self.df), len(self.df)))
-        _tmp = [list(x) for x in self.df[["filename", "GP_ID"]].values]
-        for i in range(len(_tmp)):
-            for j in range(i + 1, len(_tmp)):
-                _sim[i, j] = 1 if _tmp[i][0] == _tmp[j][1] else (GPID_SIM if _tmp[i][1] == _tmp[j][1] else 0)
-                _sim[j, i] = _sim[i, j]
+    _sim = np.zeros((len(df), len(df)))
+    _tmp = [list(x) for x in df[["filename", "GP_ID"]].values]
+    for i in range(len(_tmp)):
+        for j in range(i + 1, len(_tmp)):
+            _sim[i, j] = 1 if _tmp[i][0] == _tmp[j][1] else (GPID_SIM if _tmp[i][1] == _tmp[j][1] else 0)
+            _sim[j, i] = _sim[i, j]
 
-        # Individual splits per topology as we grow one tree per topology
-        _splits = {}
-        for _topo in self.df["topo_y"].unique():
-            _mask = self.df["topo_y"] == _topo
-            try:
-                _e_splits, _, _ = datasail(
-                    techniques=["C1e"],
-                    splits=[0.7, 0.2, 0.1],
-                    names=["train", "val", "test"],
-                    e_type="O",
-                    e_data=dict(self.df[_mask][["ID", "X"]].values.tolist()),
-                    e_strat=dict(self.df[_mask][["ID", "topo_y"]].values.tolist()),
-                    e_sim=(self.df[_mask]["ID"].values.tolist(), _sim[_mask, :][:, _mask]),
-                )
-                _splits.update(_e_splits["C1e"][0])
-            except Exception as e:
-                # report failure
-                print(f"Error for {_topo}: {e}")
-                if _mask is not None:
-                    print(f"Mask: {_mask.sum()} ({_mask.sum()}/{len(_mask)})")
-        self.df["split"] = self.df["ID"].apply(lambda x: _splits.get(x, None))
-
-        # remove everything that cannot be usefully split and update the similarity matrix
-        _mask = self.df["split"].isna()
-        print("Masking out", _mask.sum(), "entries")
-        self.df = self.df[~_mask]
-        _sim = _sim[~_mask, :][:, ~_mask]
-
-        # split all topologies
+    splits = {}
+    results = {}
+    for _topo in df["topo_y"].unique():
+        _mask = df["topo_y"] == _topo
+        print("Splitting for ", _topo, "\n", df[_mask]["y"].unique())
         _e_splits, _, _ = datasail(
             techniques=["C1e"],
             splits=[0.7, 0.2, 0.1],
             names=["train", "val", "test"],
             e_type="O",
-            e_data=dict(self.df[["ID", "X"]].values.tolist()),
-            e_strat=dict(self.df[["ID", "y"]].values.tolist()),
-            e_sim=(self.df["ID"].values.tolist(), _sim),
+            e_data=dict(df[_mask][["ID", "X"]].values.tolist()),
+            e_strat=dict(df[_mask][["ID", "y"]].values.tolist()),
+            e_sim=(df[_mask]["ID"].values.tolist(), _sim[_mask, :][:, _mask]),
         )
-        self.df["topo_split"] = self.df["ID"].apply(lambda x: _e_splits["C1e"][0][x])
+        results[_topo] = copy.deepcopy(_e_splits["C1e"][0])
+        splits.update(_e_splits["C1e"][0])
+    df["split"] = df["ID"].apply(lambda x: splits.get(x, None))
+
+    _mask = df["split"].isna()
+    df = df[~_mask]
+
+    form = np.ascontiguousarray if _sim.flags['C_CONTIGUOUS'] else np.asfortranarray
+    _sim = _sim[~_mask, :][:, ~_mask]
+    _sim = form(_sim)
+
+    e_splits, _, _ = datasail(
+        techniques=["C1e"],
+        splits=[0.7, 0.2, 0.1],
+        names=["train", "val", "test"],
+        e_type="O",
+        e_data=dict(df[["ID", "X"]].values.tolist()),
+        e_strat=dict(df[["ID", "topo_y"]].values.tolist()),
+        e_sim=(df["ID"].values.tolist(), _sim),
+    )
+    df["topo_split"] = df["ID"].apply(lambda x: e_splits["C1e"][0][x])
+
+    return df
+
+
+class TopoData:
+    def __init__(self, spec_df, weighting: bool = True, GPID_SIM: float = 0.8):
+        # Extract the most important data from the spectra dataframe to a new dataframe
+        self.df = split(spec_df, GPID_SIM=GPID_SIM)
 
         # Calculate the weights
         _vc = dict(self.df["y"].value_counts())
@@ -238,6 +239,10 @@ def spec2svg(in_filename, output_path_prefix: str, weighting: bool = True, GPID_
         total=dict(np.asarray(np.unique(data("train", "y", "topo"), return_counts=True)).T),
         topo=None,
         isomer_map=isomer_map,
+        val_X=data("val", "X", "topo"),
+        val_y=data("val", "y", "topo"),
+        test_X=data("test", "X", "topo"),
+        test_y=data("test", "y", "topo"),
     )
     dot2svg(topo_tree_name)
 
@@ -250,6 +255,10 @@ def spec2svg(in_filename, output_path_prefix: str, weighting: bool = True, GPID_
             class_weights=data.weights[topo],
             total=dict(np.asarray(np.unique(data("train", "y", topo), return_counts=True)).T),
             topo=topo,
+            val_X=data("val", "X", topo),
+            val_y=data("val", "y", topo),
+            test_X=data("test", "X", topo),
+            test_y=data("test", "y", topo),
         )
         dot2svg(iso_tree_name)
 

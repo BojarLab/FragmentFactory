@@ -82,7 +82,43 @@ class DOTTreeExporter(_BaseTreeExporter):
             kwargs["imgs"][isomer] = img
         return kwargs["imgs"][isomer]
 
-    def export(self, decision_tree, class_weights, total, topo=None, isomer_map=None):
+    @staticmethod
+    def compute_node_strings(node_id, val_path, val_y, test_path, test_y, values, **kwargs):
+        maxdex = values.index(max(values))
+        isomer = kwargs["classes"][maxdex]
+
+        val_values = []
+        for _cls in kwargs["classes"]:
+            val_values += [sum(val_y[val_path[node_id] == 1] == _cls)]
+
+        test_values = []
+        for _cls in kwargs["classes"]:
+            test_values += [sum(test_y[test_path[node_id] == 1] == _cls)]
+
+        conf_norm = lambda vals: (vals[maxdex] / kwargs['weights'][kwargs['classes'][maxdex]]) / sum([v / kwargs['weights'][c] for v, c in zip(values, kwargs['classes'])])
+        train_confidence = conf_norm(values)
+        train_coverage = (values[maxdex] / kwargs['weights'][isomer]) / kwargs['counts'][isomer]
+
+        val_confidence = conf_norm(val_values)
+        val_coverage = (val_values[maxdex] / kwargs['weights'][isomer]) / sum(val_y == isomer)
+
+        test_confidence = conf_norm(test_values)
+        test_coverage = (test_values[maxdex] / kwargs['weights'][isomer]) / sum(test_y == isomer)
+
+        return (
+            f"{isomer}<br/>"
+            f"===== Train =====<br/>"
+            f"Confidence: {train_confidence:.1%}<br/>"
+            f"Coverage: {train_coverage:.1%}<br/>"
+            f"===== Val =====<br/>"
+            f"Confidence: {val_confidence:.1%}<br/>"
+            f"Coverage: {val_coverage:.1%}<br/>"
+            f"===== Test =====<br/>"
+            f"Confidence: {test_confidence:.1%}<br/>"
+            f"Coverage: {test_coverage:.1%}"
+        ), isomer
+
+    def export(self, decision_tree, class_weights, total, val_X, val_y, test_X, test_y, topo=None, isomer_map=None):
         kwargs = {
             "classes": decision_tree.classes_,
             "weights": class_weights,
@@ -94,15 +130,17 @@ class DOTTreeExporter(_BaseTreeExporter):
 
         kwargs["highlights"] = clean_highlights(
             self.find_bold(decision_tree.tree_, 0, decision_tree.criterion, **kwargs))
+        val_path = decision_tree.decision_path(val_X).toarray().transpose()
+        test_path = decision_tree.decision_path(test_X).toarray().transpose()
 
         # each part writes to out_file
         self.head()
 
         # Now recurse the tree and add node & edge attributes
         if isinstance(decision_tree, _tree.Tree):
-            self.recurse(decision_tree, 0, criterion="impurity", **kwargs)
+            self.recurse(decision_tree, 0, "impurity", val_path, val_y, test_path, test_y, **kwargs)
         else:
-            self.recurse(decision_tree.tree_, 0, criterion=decision_tree.criterion, **kwargs)
+            self.recurse(decision_tree.tree_, 0, decision_tree.criterion, val_path, val_y, test_path, test_y, **kwargs)
 
         self.tail()
 
@@ -169,7 +207,7 @@ class DOTTreeExporter(_BaseTreeExporter):
                                **kwargs)
         return img, crumb["Theoretical fragment masses"][0]
 
-    def recurse(self, tree, node_id, criterion, parent=None, depth=0, **kwargs):
+    def recurse(self, tree, node_id, criterion, val_path, val_y, test_path, test_y, parent=None, depth=0, **kwargs):
         print("Start recurse...")
         if node_id == _tree.TREE_LEAF:
             raise ValueError("Invalid node_id %s" % _tree.TREE_LEAF)
@@ -197,17 +235,11 @@ class DOTTreeExporter(_BaseTreeExporter):
 
         node_str = self.node_to_str(tree, node_id, criterion)
         if left_child == _tree.TREE_LEAF:  # Leaf node
-            crit, samples, value = node_str[1:-1].split("\\n")[:3]
+            crit, _, value = node_str[1:-1].split("\\n")[:3]
             crit = norm_criterion(criterion, float(crit.split(" = ")[1]), **kwargs)
-            samples = int(samples.split(" = ")[1])
             values = [float(x) for x in value.split(" = ")[1][1:-1].split(", ")]
             if crit < 0.7:
-                maxdex = values.index(max(values))
-                isomer = kwargs["classes"][maxdex]
-                coverage = (
-                    f"Confidence: {(max(values) / kwargs['weights'][kwargs['classes'][maxdex]]) / sum([v / kwargs['weights'][c] for v, c in zip(values, kwargs['classes'])]):.1%}<br/>"
-                    f"Coverage: {(max(values) / kwargs['weights'][isomer]) / kwargs['counts'][isomer]:.1%}"
-                )
+                coverage, isomer = self.compute_node_strings(node_id, val_path, val_y, test_path, test_y, values, **kwargs)
                 if kwargs["isomer_map"] is not None and len(kwargs["isomer_map"][isomer]) == 1:
                     isomer = list(kwargs["isomer_map"][isomer])[0]
 
@@ -241,19 +273,16 @@ class DOTTreeExporter(_BaseTreeExporter):
             ))
 
         if left_child != _tree.TREE_LEAF:
-            self.recurse(
-                tree,
-                left_child,
-                criterion=criterion,
-                parent=node_id,
-                depth=depth + 1,
-                **kwargs,
-            )
-            self.recurse(
-                tree,
-                right_child,
-                criterion=criterion,
-                parent=node_id,
-                depth=depth + 1,
-                **kwargs,
-            )
+            for child in [left_child, right_child]:
+                self.recurse(
+                    tree,
+                    child,
+                    criterion,
+                    val_path,
+                    val_y,
+                    test_path,
+                    test_y,
+                    parent=node_id,
+                    depth=depth + 1,
+                    **kwargs,
+                )
