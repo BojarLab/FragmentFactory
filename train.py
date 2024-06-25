@@ -1,3 +1,4 @@
+import argparse
 import copy
 import os
 import pickle
@@ -264,4 +265,12 @@ def spec2svg(in_filename, output_path_prefix: str, weighting: bool = True, GPID_
 
 
 if __name__ == '__main__':
-    spec2svg("spectra_for_roman/733_isomer_spectra.pkl", "733", weighting=True, GPID_SIM=0.8)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("in_filename", type=str, help="Path to the pickled dataframe containing the spectra.")
+    parser.add_argument("output_path_prefix", type=str, help="Prefix for the output files.")
+    parser.add_argument("--weighting", action="store_true", default=False, help="Whether to use class weights.")
+    parser.add_argument("--GPID-SIM", dest="GPID_SIM", type=float, default=0.8,
+                        help="Similarity threshold for spectra with the same GlycoPostID.")
+    args = parser.parse_args()
+    spec2svg(args.in_filename, args.output_path_prefix, weighting=args.weighting, GPID_SIM=args.GPID_SIM)
+    # spec2svg("spectra_for_roman/733_isomer_spectra.pkl", "733", weighting=True, GPID_SIM=0.8)
