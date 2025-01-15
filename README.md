@@ -23,12 +23,23 @@ mamba install -c conda-forge -c bioconda -c kalininalab datasail-lite
 pip install -r requirements.txt
 ```
 
+Download the dataset from Zenodo here:
+[https://doi.org/10.5281/zenodo.7940046](https://zenodo.org/records/12177171)
+
+
 ## Usage
+Preprocess the downloaded dataset `FragmentFactory_dataset.pkl`
+> [!NOTE]  
+> Make sure the dataset is in the FragmentFactory folder or the path is set correctly within `FF_data_preprocessing.py`
+
+```bash
+python FF_data_preprocessing.py
+```
 
 Inside the FragmentFactory folder, one can run 
 
 ```bash
-python train.py <path/to/spectra_df.pkl> <output-prefix> --weighting --GPID_SIM <val>
+python train.py <path/to/spectra_df_processed.pkl> <output-prefix> --weighting --GPID_SIM <val>
 ```
 
 to create custom trees and a rough visualization thereof. 
